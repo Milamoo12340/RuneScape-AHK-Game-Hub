@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -6,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 import {
   Settings,
   Bell,
@@ -21,11 +23,129 @@ import {
   RotateCcw,
   Moon,
   Sun,
+  CheckCircle,
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
+import { apiRequest } from "@/lib/queryClient";
+
+interface UserSettings {
+  autoLaunch: boolean;
+  minimizeTray: boolean;
+  autoUpdateScripts: boolean;
+  defaultCategory: string;
+  hardwareAccel: boolean;
+  scriptPriority: string;
+  maxConcurrentScripts: number;
+  cpuLimit: boolean;
+  ramOptimize: boolean;
+  newsAlerts: boolean;
+  scriptComplete: boolean;
+  systemAlerts: boolean;
+  notificationSound: string;
+  scriptSandbox: boolean;
+  encryptStorage: boolean;
+  autoLockAfter: string;
+  uiScale: number;
+  animations: boolean;
+  glassEffects: boolean;
+}
+
+const defaultSettings: UserSettings = {
+  autoLaunch: false,
+  minimizeTray: true,
+  autoUpdateScripts: true,
+  defaultCategory: "all",
+  hardwareAccel: true,
+  scriptPriority: "normal",
+  maxConcurrentScripts: 3,
+  cpuLimit: true,
+  ramOptimize: true,
+  newsAlerts: true,
+  scriptComplete: true,
+  systemAlerts: true,
+  notificationSound: "default",
+  scriptSandbox: true,
+  encryptStorage: false,
+  autoLockAfter: "never",
+  uiScale: 100,
+  animations: true,
+  glassEffects: true,
+};
 
 export default function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
+  const { toast } = useToast();
+  const [settings, setSettings] = useState<UserSettings>(defaultSettings);
+  const [loading, setLoading] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    // Load settings from localStorage
+    const savedSettings = localStorage.getItem("userSettings");
+    if (savedSettings) {
+      try {
+        setSettings(JSON.parse(savedSettings));
+      } catch (e) {
+        console.error("Failed to parse saved settings");
+      }
+    }
+  }, []);
+
+  const handleSwitchChange = (key: keyof UserSettings, value: boolean) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+    setSaved(false);
+  };
+
+  const handleSelectChange = (key: keyof UserSettings, value: string) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+    setSaved(false);
+  };
+
+  const handleSliderChange = (key: keyof UserSettings, value: number) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+    setSaved(false);
+  };
+
+  const handleSaveSettings = async () => {
+    setLoading(true);
+    try {
+      localStorage.setItem("userSettings", JSON.stringify(settings));
+      
+      // Sync with backend if user is authenticated
+      try {
+        await apiRequest("/api/settings", "POST", settings);
+      } catch (e) {
+        // Backend sync is optional for offline use
+        console.log("Backend settings sync skipped (offline mode)");
+      }
+      
+      setSaved(true);
+      toast({
+        title: "Settings saved",
+        description: "Your preferences have been saved successfully",
+        duration: 3000,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save settings",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetToDefaults = () => {
+    setSettings(defaultSettings);
+    localStorage.removeItem("userSettings");
+    setSaved(false);
+    toast({
+      title: "Reset complete",
+      description: "Settings have been reset to defaults",
+      duration: 3000,
+    });
+  };
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -68,7 +188,11 @@ export default function SettingsPage() {
                       <Label htmlFor="auto-launch">Auto-launch on startup</Label>
                       <p className="text-xs text-muted-foreground">Start the hub when Windows boots</p>
                     </div>
-                    <Switch id="auto-launch" />
+                    <Switch 
+                      id="auto-launch"
+                      checked={settings.autoLaunch}
+                      onCheckedChange={(value) => handleSwitchChange("autoLaunch", value)}
+                    />
                   </div>
                   
                   <div className="flex items-center justify-between">
@@ -76,7 +200,11 @@ export default function SettingsPage() {
                       <Label htmlFor="minimize-tray">Minimize to system tray</Label>
                       <p className="text-xs text-muted-foreground">Keep running in background when closed</p>
                     </div>
-                    <Switch id="minimize-tray" defaultChecked />
+                    <Switch 
+                      id="minimize-tray"
+                      checked={settings.minimizeTray}
+                      onCheckedChange={(value) => handleSwitchChange("minimizeTray", value)}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -84,12 +212,16 @@ export default function SettingsPage() {
                       <Label htmlFor="auto-update">Auto-update scripts</Label>
                       <p className="text-xs text-muted-foreground">Check for script updates automatically</p>
                     </div>
-                    <Switch id="auto-update" defaultChecked />
+                    <Switch 
+                      id="auto-update"
+                      checked={settings.autoUpdateScripts}
+                      onCheckedChange={(value) => handleSwitchChange("autoUpdateScripts", value)}
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Default script category</Label>
-                    <Select defaultValue="all">
+                    <Select value={settings.defaultCategory} onValueChange={(value) => handleSelectChange("defaultCategory", value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -147,10 +279,17 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>UI Scale</Label>
+                    <Label>UI Scale: {settings.uiScale}%</Label>
                     <div className="flex items-center gap-4">
                       <span className="text-xs text-muted-foreground">80%</span>
-                      <Slider defaultValue={[100]} max={120} min={80} step={10} className="flex-1" />
+                      <Slider 
+                        value={[settings.uiScale]} 
+                        max={120} 
+                        min={80} 
+                        step={10}
+                        onValueChange={(value) => handleSliderChange("uiScale", value[0])}
+                        className="flex-1"
+                      />
                       <span className="text-xs text-muted-foreground">120%</span>
                     </div>
                   </div>
@@ -160,7 +299,11 @@ export default function SettingsPage() {
                       <Label htmlFor="animations">Animations</Label>
                       <p className="text-xs text-muted-foreground">Enable smooth transitions and effects</p>
                     </div>
-                    <Switch id="animations" defaultChecked />
+                    <Switch 
+                      id="animations"
+                      checked={settings.animations}
+                      onCheckedChange={(value) => handleSwitchChange("animations", value)}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -168,20 +311,11 @@ export default function SettingsPage() {
                       <Label htmlFor="glass-effects">Glassmorphism effects</Label>
                       <p className="text-xs text-muted-foreground">Enable blur and transparency effects</p>
                     </div>
-                    <Switch id="glass-effects" defaultChecked />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Accent color</Label>
-                    <div className="flex gap-2">
-                      {["primary", "secondary", "accent"].map((color) => (
-                        <button
-                          key={color}
-                          className={`w-10 h-10 rounded-lg border-2 border-border hover:border-primary transition-colors bg-${color}`}
-                          style={{ backgroundColor: `hsl(var(--${color}))` }}
-                        />
-                      ))}
-                    </div>
+                    <Switch 
+                      id="glass-effects"
+                      checked={settings.glassEffects}
+                      onCheckedChange={(value) => handleSwitchChange("glassEffects", value)}
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -206,12 +340,16 @@ export default function SettingsPage() {
                       <Label htmlFor="hardware-accel">Hardware acceleration</Label>
                       <p className="text-xs text-muted-foreground">Use GPU for rendering</p>
                     </div>
-                    <Switch id="hardware-accel" defaultChecked />
+                    <Switch 
+                      id="hardware-accel"
+                      checked={settings.hardwareAccel}
+                      onCheckedChange={(value) => handleSwitchChange("hardwareAccel", value)}
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Script execution priority</Label>
-                    <Select defaultValue="normal">
+                    <Select value={settings.scriptPriority} onValueChange={(value) => handleSelectChange("scriptPriority", value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -225,10 +363,16 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Max concurrent scripts</Label>
+                    <Label>Max concurrent scripts: {settings.maxConcurrentScripts}</Label>
                     <div className="flex items-center gap-4">
                       <span className="text-xs text-muted-foreground">1</span>
-                      <Slider defaultValue={[3]} max={10} min={1} className="flex-1" />
+                      <Slider 
+                        value={[settings.maxConcurrentScripts]} 
+                        max={10} 
+                        min={1}
+                        onValueChange={(value) => handleSliderChange("maxConcurrentScripts", value[0])}
+                        className="flex-1"
+                      />
                       <span className="text-xs text-muted-foreground">10</span>
                     </div>
                   </div>
@@ -239,7 +383,11 @@ export default function SettingsPage() {
                       <p className="text-xs text-muted-foreground">Prevent excessive CPU usage</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Switch id="cpu-limit" defaultChecked />
+                      <Switch 
+                        id="cpu-limit"
+                        checked={settings.cpuLimit}
+                        onCheckedChange={(value) => handleSwitchChange("cpuLimit", value)}
+                      />
                       <span className="text-sm font-mono">80%</span>
                     </div>
                   </div>
@@ -249,7 +397,11 @@ export default function SettingsPage() {
                       <Label htmlFor="ram-optimize">RAM optimization</Label>
                       <p className="text-xs text-muted-foreground">Auto-clear unused memory</p>
                     </div>
-                    <Switch id="ram-optimize" defaultChecked />
+                    <Switch 
+                      id="ram-optimize"
+                      checked={settings.ramOptimize}
+                      onCheckedChange={(value) => handleSwitchChange("ramOptimize", value)}
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -274,7 +426,11 @@ export default function SettingsPage() {
                       <Label htmlFor="news-alerts">OSRS news alerts</Label>
                       <p className="text-xs text-muted-foreground">Get notified about updates and events</p>
                     </div>
-                    <Switch id="news-alerts" defaultChecked />
+                    <Switch 
+                      id="news-alerts"
+                      checked={settings.newsAlerts}
+                      onCheckedChange={(value) => handleSwitchChange("newsAlerts", value)}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -282,7 +438,11 @@ export default function SettingsPage() {
                       <Label htmlFor="script-complete">Script completion</Label>
                       <p className="text-xs text-muted-foreground">Alert when scripts finish executing</p>
                     </div>
-                    <Switch id="script-complete" defaultChecked />
+                    <Switch 
+                      id="script-complete"
+                      checked={settings.scriptComplete}
+                      onCheckedChange={(value) => handleSwitchChange("scriptComplete", value)}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -290,27 +450,26 @@ export default function SettingsPage() {
                       <Label htmlFor="system-alerts">System warnings</Label>
                       <p className="text-xs text-muted-foreground">High CPU/RAM usage alerts</p>
                     </div>
-                    <Switch id="system-alerts" defaultChecked />
+                    <Switch 
+                      id="system-alerts"
+                      checked={settings.systemAlerts}
+                      onCheckedChange={(value) => handleSwitchChange("systemAlerts", value)}
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Notification sound</Label>
-                    <div className="flex items-center gap-2">
-                      <Select defaultValue="default">
-                        <SelectTrigger className="flex-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="default">Default</SelectItem>
-                          <SelectItem value="ding">Ding</SelectItem>
-                          <SelectItem value="chime">Chime</SelectItem>
-                          <SelectItem value="none">None</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button size="icon" variant="outline">
-                        <Volume2 className="w-4 h-4" />
-                      </Button>
-                    </div>
+                    <Select value={settings.notificationSound} onValueChange={(value) => handleSelectChange("notificationSound", value)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">Default</SelectItem>
+                        <SelectItem value="ding">Ding</SelectItem>
+                        <SelectItem value="chime">Chime</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </CardContent>
@@ -335,7 +494,11 @@ export default function SettingsPage() {
                       <Label htmlFor="script-sandbox">Script sandboxing</Label>
                       <p className="text-xs text-muted-foreground">Run scripts in isolated environment</p>
                     </div>
-                    <Switch id="script-sandbox" defaultChecked />
+                    <Switch 
+                      id="script-sandbox"
+                      checked={settings.scriptSandbox}
+                      onCheckedChange={(value) => handleSwitchChange("scriptSandbox", value)}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between">
@@ -343,12 +506,16 @@ export default function SettingsPage() {
                       <Label htmlFor="encrypt-storage">Encrypt local storage</Label>
                       <p className="text-xs text-muted-foreground">Protect saved scripts and settings</p>
                     </div>
-                    <Switch id="encrypt-storage" />
+                    <Switch 
+                      id="encrypt-storage"
+                      checked={settings.encryptStorage}
+                      onCheckedChange={(value) => handleSwitchChange("encryptStorage", value)}
+                    />
                   </div>
 
                   <div className="space-y-2">
                     <Label>Auto-lock after inactivity</Label>
-                    <Select defaultValue="never">
+                    <Select value={settings.autoLockAfter} onValueChange={(value) => handleSelectChange("autoLockAfter", value)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -375,11 +542,21 @@ export default function SettingsPage() {
 
         {/* Action Buttons */}
         <div className="flex gap-3">
-          <Button className="flex-1" data-testid="button-save-settings">
-            <Save className="w-4 h-4 mr-2" />
-            Save Changes
+          <Button 
+            className="flex-1" 
+            onClick={handleSaveSettings}
+            disabled={loading}
+            data-testid="button-save-settings"
+          >
+            {saved ? <CheckCircle className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+            {loading ? "Saving..." : saved ? "Saved!" : "Save Changes"}
           </Button>
-          <Button variant="outline" className="flex-1">
+          <Button 
+            variant="outline" 
+            className="flex-1"
+            onClick={handleResetToDefaults}
+            disabled={loading}
+          >
             <RotateCcw className="w-4 h-4 mr-2" />
             Reset to Defaults
           </Button>
